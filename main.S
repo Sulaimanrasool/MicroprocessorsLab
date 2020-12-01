@@ -1,7 +1,8 @@
 #include <xc.inc>
-
+    
+;importing external subroutines 
 extrn   encrypt_me, decrypt_me
-extrn	UART_Setup, UART_Transmit_Message  ; external subroutines
+extrn	UART_Setup, UART_Transmit_Message  
 extrn	LCD_Setup, LCD_Write_Message, LCD_clear
 extrn   keypad_setup, keypad_start
 extrn   Storage_setup, Storage_read
@@ -16,75 +17,64 @@ myArray:    ds 0x80 ; reserve 128 bytes for message data
 
 psect	data    
 	; ******* myTable, data in programme memory, and its length *****
+	; ******* Text to be encrypted stored in the table *****
 myTable:
-    db   'h', 'e', 'l' , 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!'  
-    myword EQU 0x200    ; Address in RAM for data
-    counter_hi EQU 0x8     ; Address of counter variable
-    cipherkey EQU 0x9   ; value of a cipher key 
-    zorkey    EQU 0x10
+	    db   'L', 'A', 'B' , ' ','P', 'R', 'O', 'J', 'E', 'C', 'T', '!', '!'  
+    myword	EQU 0x200	; Address in RAM for data
+    counter_hi	EQU 0x8		; Address of counter variable
+    cipherkey	EQU 0x9		; Address of cipher key
+    xorkey	EQU 0x10	; Address of XOR key
     
-   
 psect	code, abs	
 rst: 	org 0x0
  	goto	setup
 
 	; ******* Programme FLASH read Setup Code ***********************
 setup:	
-	bcf	CFGS	; point to Flash program memory  
-	bsf	EEPGD 	; access Flash program memory
-	call    keypad_setup
-	movff   LATH, cipherkey
+	bcf	CFGS		; point to Flash program memory  
+	bsf	EEPGD		; access Flash program memory
+	call    keypad_setup	; obtain the cipher key
+	movff   LATH, cipherkey	; store key temporarily at address
 	movlw   0 
-	movwf   LATH
-	call    keypad_setup
-	movff   LATH, zorkey
+	movwf   LATH		; clear traces of key
+	call    keypad_setup	; obtain XOR key
+	movff   LATH, xorkey	; store key temporarily at address
 	movlw   0 
-	movwf   LATH
-	call    Storage_setup 
-	;call	UART_Setup 	; setup UART
-	call	LCD_Setup	; setup UART
+	movwf   LATH		; clear traces of key
+	call    Storage_setup	; store keys in external memory
+	call	UART_Setup 	; setup UART
+	call	LCD_Setup	; setup LCD
 	goto	start
 	
 	; ******* Main programme ****************************************
 start: 	    
-	lfsr     0, myword    ; Load FSR0 with address in RAM
-	movlw    low highword(myTable)    ; address of data in PM
-	movwf    TBLPTRU, A    ; load upper bits to TBLPTRU
-	movlw    high(myTable)    ; address of data in PM
-	movwf    TBLPTRH, A    ; load high byte to TBLPTRH
-	movlw    low(myTable)    ; address of data in PM
-	movwf    TBLPTRL, A    ; load low byte to TBLPTRL
+	lfsr     0, myword		    ; Load FSR0 with address in RAM
+	lfsr     1, 0x300
+	movlw    low highword(myTable)	    ; address of data in PM
+	movwf    TBLPTRU, A		    ; load upper bits to TBLPTRU
+	movlw    high(myTable)		    ; address of data in PM
+	movwf    TBLPTRH, A		    ; load high byte to TBLPTRH
+	movlw    low(myTable)		    ; address of data in PM
+	movwf    TBLPTRL, A		    ; load low byte to TBLPTRL
+	movlw    12			    ; size of the string 
+	movwf    counter_hi, A		    ; our counter register
+loop1: 	
+	tblrd*+		   ; move one byte from PM to TABLAT, increment TBLPRT
+	movff    TABLAT, 0x52
+	call     encrypt_me		; call the encryption module
+	movff    0x53, POSTINC1
+	call     decrypt_me		; call the decryption moduele
+	movff    0x53, POSTINC0	;move data from TABLAT to,FSR0, increment FSR0
+	decfsz   counter, A		; count down to zero
+	bra      loop1 
+	
+	movlw	12			; number of characters
+	lfsr	1, 0x300		; point FSR1 to begining of text
+	call	UART_Transmit_Message	; output encrypt char to Terminal
+	
 	movlw    12
-	movwf    counter_hi, A		; our counter register
-loop: 	
-	tblrd*+			         ; move one byte from PM to TABLAT, increment TBLPRT
-	movff    TABLAT, 0x604
-	call     encrypt_me
-;	movf     cipherkey, W 
-;	addwf    TABLAT, W		 ; add the cipher key to original letters
-;	xorwf    zorkey, W		 ; add zorkey to cipher encrypt
-;	xorwf    zorkey, W		 ; decrypt string
-;	movwf    0x99			 ; decrypt string  
-;	movf     cipherkey,W		 ; decrypt string
-;	subwf    0x99, W
-	call     decrypt_me
-	movwf    POSTINC0		 ;  move read data from TABLAT to (FSR0), increment FSR0
-	decfsz   counter, A    ; count down to zero
-	bra      loop 
-		
-	;movlw	12	; output message to UART
-	;lfsr	2, 0x200
-	;call	UART_Transmit_Message
-
-	movlw    12
-	lfsr     0  , 0x200
-	call	LCD_Write_Message   ; goto current line in code
-
+	lfsr     0  , 0x200		; point FSR0 to begining of text
+	call	LCD_Write_Message	; output decrypt char to LCD
 	goto     $
-			
-	; a delay subroutine if you need one, times around loop in delay_count
-delay:	decfsz	delay_count, A	; decrement until zero
-	bra	delay
-	return
-
+	
 	end	rst
