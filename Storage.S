@@ -28,14 +28,14 @@ Storage_setup:
     return
 
 Storage_start: 
-    movf    0x09, W, A        ; Get Caesar Cipher Key
-    call    write	      ; store Caesar Cipher Key
+    movf    0x09, W, A        ; Get Caesar Cipher Key from keypad
+    call    write	      ; store Caesar Cipher Key in external memory
     movlw   0x0 
-    movwf   0x09
-    movf    0x10, W, A	      ; Get XOR Key
-    call    write2	      ; store XOR Key
+    movwf   0x09	      ; Erase Caesar Cipher key from memory
+    movf    0x10, W, A	      ; Get XOR Key from keypad
+    call    write2	      ; store XOR Key in external memory
     movlw   0x0 
-    movwf   0x10
+    movwf   0x10	      ; Erase XOR key from memory
     return
     
 write:
